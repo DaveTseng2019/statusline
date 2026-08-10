@@ -6,15 +6,17 @@ Claude Code 每次畫面更新時，會執行 settings.json 裡 statusLine.comma
 
 這支 statusline-command.ps1 的流程
 
-1. 讀 stdin JSON（第 9-11 行）：[Console]::In.ReadToEnd() + ConvertFrom-Json，用自訂的 J 函式安全取巢狀欄位，拿到：
+1. 讀 stdin JSON：用 StreamReader 以 UTF-8 直讀 stdin bytes（避免中文 session_name 亂碼），ConvertFrom-Json 解析失敗會直接顯示紅字錯誤而非靜默消失。用自訂的 J 函式安全取巢狀欄位，拿到：
   - rate_limits.five_hour / seven_day 的用量 % 與重置時間
+  - rate_limits.overage.used_percentage（usage credits，目前 CC 尚未吐這欄位，開放後自動顯示）
   - context_window.used_percentage（context 用量）
+  - effort.level（模型 effort，跟著 session 內 /effort 切換）
   - model.display_name、workspace.current_dir、session_id
-2. 額度顯示：直接用 stdin JSON 裡本帳號的 5h / 7d 用量與重置時間。
-3. 時間進度條（第 115-123 行）：Ti 比視窗長度（5h=18000 秒、7d=604800 秒），算出經過比例，畫成 8 格的 █░ 條。5h 已重置則顯示 ↻。
+2. 額度顯示：直接用 stdin JSON 裡本帳號的 5h / 7d 用量與重置時間；有 overage 欄位時多顯示一段 credits 用量。
+3. 時間進度條：Ti 比視窗長度（5h=18000 秒、7d=604800 秒），算出經過比例，畫成 8 格的 █░ 條。5h 已重置則顯示 ↻。
 4. 顏色分級：用量 ≥80% 紅、≥50% 黃 。5h 用量 ≥90% 時額外顯示紅色「⚠交給Codex」警告。
 5. 依終端寬度切版
-  - 寬模式（≥80 欄，雙行）：第一行 = 時間、專案名、模型、ctx 剩餘、5h/7d 額度；第二行 = 最後訊息、Git 分支 + dirty 標記 +
+  - 寬模式（≥80 欄，雙行）：第一行 = 時間、專案名、模型（含 effort，如 [Fable 5·high]）、ctx 剩餘、5h/7d 額度；第二行 = 最後訊息、Git 分支 + dirty 標記 +
   - 窄模式（<80 欄，單行）：只留時間、目錄、ctx、重置時間、額度。
 6. 選用掛勾（都是「檔案存在才啟用
   - quota-handoff-guard.py：session 有 ID 時，把整包 JSON 存到暫存檔，用 Start-Process 背景跑
