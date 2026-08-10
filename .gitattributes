@@ -1,0 +1,5 @@
+* text=auto
+
+# cmd.exe 對 LF-only 的批次檔在 label/goto 與多行 for 區塊會解析錯，行尾必須釘死。
+*.cmd text eol=crlf
+*.bat text eol=crlf

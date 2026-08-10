@@ -77,22 +77,11 @@ Copy-Item to-codex.mjs "$env:USERPROFILE\.claude\scripts\"
 
 **已裝 Codex 桌面版** — 它自帶完整 CLI（`resume` / `exec` / `app-server` 都在），
 但執行檔埋在 `%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\codex.exe`，沒有放進 PATH，
-而且那層 hash 目錄每次更新都會變。放一個 shim 到 PATH 裡的個人目錄（例如 `~\.local\bin\codex.cmd`）：
+而且那層 hash 目錄每次更新都會變。用 `codex.cmd` 這個 shim，它每次執行都重新挑
+最新的一層 hash 目錄，桌面版更新後不用改。複製到 PATH 裡的個人目錄：
 
-```bat
-@echo off
-REM Shim for the Codex desktop app CLI. The bin folder is hash-named and
-REM changes on every update, so resolve the newest one that has codex.exe.
-setlocal
-set "CODEXBIN=%LOCALAPPDATA%\OpenAI\Codex\bin"
-for /f "delims=" %%d in ('dir /b /a:d /o-d "%CODEXBIN%" 2^>nul') do (
-  if exist "%CODEXBIN%\%%d\codex.exe" (
-    endlocal & "%LOCALAPPDATA%\OpenAI\Codex\bin\%%d\codex.exe" %*
-    exit /b %errorlevel%
-  )
-)
-echo codex.exe not found under %CODEXBIN% 1>&2
-exit /b 1
+```powershell
+Copy-Item codex.cmd "$env:USERPROFILE\.local\bin\"   # 這個目錄要在 PATH 裡
 ```
 
 這種情況**不要**再去 `npm i -g @openai/codex`，三個理由：
