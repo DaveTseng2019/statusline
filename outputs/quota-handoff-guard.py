@@ -59,13 +59,39 @@ def blocks_text(content):
                      if isinstance(b, dict) and b.get("type") == "text").strip()
 
 
+def transcript_path(session_id):
+    hits = glob.glob(os.path.join(HOME, ".claude", "projects", "*", session_id + ".jsonl"))
+    return hits[0] if hits else ""
+
+
+def codex_resume(session_id):
+    """把 session 匯入 Codex，回傳 `codex resume <id>`。失敗回傳 ""，不能影響交接文件。"""
+    source = transcript_path(session_id)
+    script = os.path.join(HOME, ".claude", "scripts", "to-codex.mjs")
+    if not source or not os.path.exists(script):
+        return ""
+    try:
+        p = subprocess.run(("node", script, "--source", source), capture_output=True,
+                           encoding="utf-8", errors="replace", timeout=180)
+        if p.returncode != 0:
+            log("Codex 匯入失敗：" + (p.stderr or p.stdout or "").strip()[:300])
+            return ""
+        for line in reversed(p.stdout.splitlines()):
+            if line.startswith("codex resume "):
+                return line.strip()
+        log("Codex 匯入沒吐出 resume 指令：" + p.stdout.strip()[:300])
+    except Exception as e:
+        log("Codex 匯入例外：%s" % e)
+    return ""
+
+
 def conversation(session_id, keep=3):
     """從 ~/.claude/projects/*/<session_id>.jsonl 撈最後幾則使用者訊息與最後一則回覆。"""
-    hits = glob.glob(os.path.join(HOME, ".claude", "projects", "*", session_id + ".jsonl"))
-    if not hits:
+    path = transcript_path(session_id)
+    if not path:
         return [], ""
     users, last_reply = [], ""
-    with open(hits[0], encoding="utf-8", errors="replace") as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             try:
                 rec = json.loads(line)
@@ -99,6 +125,11 @@ def render(data):
         "> 5h 額度即將見底，這份文件給接手的人／Codex 用。",
         "> 讀完下面的 git 變更與「最後回覆」，從那裡接續。",
         "",
+    ]
+    resume = codex_resume(session_id)
+    if resume:
+        out += ["## 接手：Codex（完整對話已匯入）", "", "```", resume, "```", ""]
+    out += [
         "- 產生時間：%s" % datetime.now().strftime("%Y-%m-%d %H:%M"),
         "- 觸發原因：5h 額度已用 %d%%（%s 重置）" % (pct, reset_str),
         "- Session：`%s`" % session_id,
@@ -164,6 +195,8 @@ def selftest():
     body = open(path, encoding="utf-8").read()
     assert "5h 額度已用 92%" in body, body[:400]
     assert "## Git" in body, "在 git repo 裡跑就該有 Git 區塊"
+    # 找不到 transcript（或沒裝 to-codex.mjs）時，Codex 區塊消失但文件照寫
+    assert "接手：Codex" not in body, "假 session 不該匯入成功"
     assert run(json.dumps(payload)) is None, "同一視窗不該重寫"
 
     logged = open(os.path.join(OUTDIR, "handoff.log"), encoding="utf-8").read()

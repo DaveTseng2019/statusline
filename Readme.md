@@ -28,6 +28,8 @@ Claude Code 每次畫面更新時，會執行 settings.json 裡 statusLine.comma
 5h 額度撞到 90% 時寫一份交接文件到 `~\.claude\handoff\handoff-<session前8碼>-<5h重置epoch>.md`，
 內容是觸發當下的額度／模型／context、git 分支與未提交變更、最近 5 筆 commit，
 再從 `~\.claude\projects\*\<session_id>.jsonl` 撈最後 3 則使用者訊息與最後一則回覆。
+若 `~\.claude\scripts\to-codex.mjs` 在，順手把整個 session 匯入 Codex，文件開頭放一行 `codex resume <id>`
+——Codex 接的是完整對話，摘要是給人看的；匯入失敗只記 log，文件照寫。
 每寫一份就在 `handoff.log` 記一行；例外也記在那裡（背景視窗是隱藏的，不記就等於沒發生）。
 **同一個 5h 視窗只寫一次**：檔名即去重標記，檔案存在就直接結束；額度重置後 `resets_at` 改變，下一輪會寫新的一份。
 

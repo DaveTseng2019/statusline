@@ -42,6 +42,10 @@ Copy-Item quota-handoff-guard.py "$env:USERPROFILE\.claude\scripts\"
 文件內容：觸發當下的額度／模型／context、專案的 git 分支與未提交變更、最近 5 筆 commit，
 以及從 session transcript 撈出的最後 3 則使用者訊息與最後一則回覆。
 
+若 `~/.claude/scripts/to-codex.mjs` 存在，會先把整個 session 匯入 Codex，文件開頭多一行
+`codex resume <thread-id>`——Codex 拿到的是**完整對話**，上面那份摘要是給人看的。
+需要 `codex` 在 PATH 與 Node；匯入失敗只會記進 `handoff.log`，交接文件照常寫出。
+
 **同一個 5h 視窗只寫一次**——檔名就是去重標記，檔案在就直接結束。額度重置後 `resets_at` 改變，
 下一個視窗再度超標時會寫新的一份。不裝這支 .py 就整段跳過，statusline 照常運作。
 
