@@ -169,11 +169,20 @@ def run(raw):
         return None
     resets = int(dig(data, "rate_limits", "five_hour", "resets_at") or 0)
     path = os.path.join(OUTDIR, "handoff-%s-%d.md" % (session_id[:8], resets))
-    if os.path.exists(path):
-        return None  # 同一個 5h 視窗已經寫過
     os.makedirs(OUTDIR, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(render(data))
+    # 先原子搶下檔名再開始 render。statusline 在 ≥90% 時每刷新一次就 spawn 一個 guard，
+    # render 又慢（Codex 匯入實測近一分鐘），先檢查再建檔的話那一分鐘內會有好幾支同時匯入。
+    try:
+        os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except FileExistsError:
+        return None  # 同一個 5h 視窗已經有人寫過或正在寫
+    try:
+        body = render(data)  # 這段期間 path 是 0 bytes 的佔位檔
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(body)
+    except Exception:
+        os.unlink(path)  # 失敗就把佔位檔收掉，否則空檔會卡死整個 5h 視窗
+        raise
     log("寫入交接文件 %s（5h %d%%）" % (os.path.basename(path), int(float(pct))))
     return path
 
@@ -201,6 +210,25 @@ def selftest():
 
     logged = open(os.path.join(OUTDIR, "handoff.log"), encoding="utf-8").read()
     assert logged.count("寫入交接文件") == 1, logged
+
+    # render 中途炸掉時，佔位檔要收乾淨——留著就等於這個 5h 視窗再也寫不出交接文件
+    global render
+    ok_render = render
+    payload["session_id"] = "boomtest-0001"  # 前 8 碼要跟上面不同，否則會撞同一個檔名
+    boom_path = os.path.join(OUTDIR, "handoff-boomtest-1760000000.md")
+
+    def boom(_):
+        raise RuntimeError("boom")
+
+    render = boom
+    try:
+        run(json.dumps(payload))
+        assert False, "render 的例外該往外丟"
+    except RuntimeError:
+        pass
+    assert not os.path.exists(boom_path), "佔位檔沒收掉"
+    render = ok_render
+    assert run(json.dumps(payload)), "佔位檔收掉後應該要能重寫"
 
     # 髒資料不該讓它整個炸掉
     assert run('{"session_id":"x"}') is None
