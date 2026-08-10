@@ -19,10 +19,17 @@ Claude Code 每次畫面更新時，會執行 settings.json 裡 statusLine.comma
   - 寬模式（≥80 欄，雙行）：第一行 = 時間、專案名、模型（含 effort，如 [Fable 5·high]）、ctx 剩餘、5h/7d 額度；第二行 = 最後訊息、Git 分支 + dirty 標記 +
   - 窄模式（<80 欄，單行）：只留時間、目錄、ctx、重置時間、額度。
 6. 選用掛勾（都是「檔案存在才啟用
-  - quota-handoff-guard.py：session 有 ID 時，把整包 JSON 存到暫存檔，用 Start-Process 背景跑
-Python 守門員，不阻塞 statusline（整個 UI）。
+  - quota-handoff-guard.py：5h 用量 ≥90% 且 session 有 ID 時，把整包 JSON 寫到暫存檔，用 Start-Process 背景跑 Python 守門員，不阻塞 statusline（整個 UI）。暫存檔以 session_id 命名（同 session 覆寫同一個），並順手刪掉一小時前的殘檔。
   - codex-statusline.ps1：有的話執行並把輸出接在第二行。
   - last-session-msg-<session_id>
+
+守門員（quota-handoff-guard.py）做的事
+
+5h 額度撞到 90% 時寫一份交接文件到 `~\.claude\handoff\handoff-<session前8碼>-<5h重置epoch>.md`，
+內容是觸發當下的額度／模型／context、git 分支與未提交變更、最近 5 筆 commit，
+再從 `~\.claude\projects\*\<session_id>.jsonl` 撈最後 3 則使用者訊息與最後一則回覆。
+每寫一份就在 `handoff.log` 記一行；例外也記在那裡（背景視窗是隱藏的，不記就等於沒發生）。
+**同一個 5h 視窗只寫一次**：檔名即去重標記，檔案存在就直接結束；額度重置後 `resets_at` 改變，下一輪會寫新的一份。
 
 關鍵設計點
 

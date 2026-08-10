@@ -44,13 +44,22 @@ $HOMEDIR = $env:USERPROFILE
 $ccfg = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOMEDIR '.claude' }
 
 # --- 90% 手動交接守門員（背景執行，不擋 status line）---
+# notes: 走暫存檔而非直接 pipe 到 StandardInput。PS 5.1 的 Process.StandardInput 會在開頭多塞
+#        一個 UTF-8 BOM，python 的 json.load 會當場炸掉（PS 7 已修掉）。要改 pipe 得等只支援 7+。
+# notes: 90% 門檻在這裡先擋一次（guard 自己也會擋）。不然沒到門檻也要 spawn 一個 python，
+#        statusline 一分鐘刷十幾次就是十幾個 process。兩邊都要改門檻時記得一起改。
 $guard = Join-Path $HOMEDIR '.claude\scripts\quota-handoff-guard.py'
-if ($session_id -and (Test-Path $guard)) {
+if ($session_id -and (Test-Path $guard) -and ($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) {
   try {
-    $tmp = Join-Path $env:TEMP "csl-guard-$PID.json"
+    # 檔名綁 session_id：同一 session 每次刷新覆寫同一個檔，不會每刷一次留一個
+    $tmp = Join-Path $env:TEMP "csl-guard-$session_id.json"
     [IO.File]::WriteAllText($tmp, $raw)
     Start-Process -FilePath 'python' -ArgumentList "`"$guard`"" `
       -RedirectStandardInput $tmp -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+    # 清掉舊 session 的殘檔；1 小時前的檔不可能還有 python 在讀
+    Get-ChildItem $env:TEMP -Filter 'csl-guard-*.json' -File -ErrorAction SilentlyContinue |
+      Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-1) } |
+      Remove-Item -Force -ErrorAction SilentlyContinue
   } catch {}
 }
 
