@@ -5,6 +5,10 @@
 $OutputEncoding = [Text.UTF8Encoding]::new($false)
 try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch {}
 
+# notes: 繼承到 NO_COLOR（或 TERM=dumb）時 PS 7.2+ 會把 OutputRendering 設成 PlainText，
+#        連字串裡自己寫的 ANSI 都會被剝掉，整條 statusline 變單色。這裡的顏色是給 CC 渲染用的，強制開。
+if ($PSStyle) { $PSStyle.OutputRendering = 'Ansi' }
+
 # --- 讀取 stdin JSON ---
 # notes: 直接以 UTF-8 讀 stdin bytes。用 [Console]::InputEncoding 在 stdin 被重導向時可能設定失敗，
 # 中文 session_name 會變亂碼、吃掉引號使 JSON 非法，下面的 catch 靜默吞掉後整條 statusline 只剩時間。
@@ -43,13 +47,17 @@ $session_id = J $data @('session_id')
 $HOMEDIR = $env:USERPROFILE
 $ccfg = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOMEDIR '.claude' }
 
+# notes: 2026-08-23 停用自動交接。三次觸發都只剩 5~20 分鐘就重置，等重置比換 Codex 劃算。
+#        機制、guard 與 /tocodex 完整保留，要恢復把旗標改回 $true。
+$HANDOFF_ON = $false
+
 # --- 90% 手動交接守門員（背景執行，不擋 status line）---
 # notes: 走暫存檔而非直接 pipe 到 StandardInput。PS 5.1 的 Process.StandardInput 會在開頭多塞
 #        一個 UTF-8 BOM，python 的 json.load 會當場炸掉（PS 7 已修掉）。要改 pipe 得等只支援 7+。
 # notes: 90% 門檻在這裡先擋一次（guard 自己也會擋）。不然沒到門檻也要 spawn 一個 python，
 #        statusline 一分鐘刷十幾次就是十幾個 process。兩邊都要改門檻時記得一起改。
 $guard = Join-Path $HOMEDIR '.claude\scripts\quota-handoff-guard.py'
-if ($session_id -and (Test-Path $guard) -and ($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) {
+if ($HANDOFF_ON -and $session_id -and (Test-Path $guard) -and ($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) {
   try {
     # 檔名綁 session_id：同一 session 每次刷新覆寫同一個檔，不會每刷一次留一個
     $tmp = Join-Path $env:TEMP "csl-guard-$session_id.json"
@@ -196,7 +204,7 @@ if ($cols -ge 80) {
     $L1 += "  ${DIM}ctx$RST $c$ctx_rem%$RST"
   }
   if ($quota_block) { $L1 += "    $quota_block" }
-  if (($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) {
+  if ($HANDOFF_ON -and ($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) {
     $L1 += "  $RED$([char]0x26A0) 交給Codex$RST"
   }
   Write-Output $L1
@@ -261,6 +269,6 @@ if ($cols -ge 80) {
   if ($null -ne $ctx_rem) { $L += " ${DIM}ctx$RST$(Color-Rem $ctx_rem)$ctx_rem%$RST" }
   if ($five_next) { $L += " $DIM$([char]0x2192)$five_next$RST" }
   if ($quota_block) { $L += " $quota_block" }
-  if (($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) { $L += " $RED!$RST" }
+  if ($HANDOFF_ON -and ($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) { $L += " $RED!$RST" }
   Write-Output $L
 }
