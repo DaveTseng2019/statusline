@@ -60,8 +60,7 @@ if (Test-Path $cred) {
   try {
     $ctext = [IO.File]::ReadAllText($cred)
     if ($ctext -match '"subscriptionType"\s*:\s*"([^"]+)"') {
-      $p = $Matches[1]
-      $plan = $p.Substring(0,1).ToUpper() + $p.Substring(1)
+      $plan = $Matches[1].ToUpper()
     }
   } catch {}
 }
