@@ -40,6 +40,7 @@ $effort     = J $data @('effort','level')
 $ovr_pct    = J $data @('rate_limits','overage','used_percentage')
 $model_name = J $data @('model','display_name')
 if (-not $model_name) { $model_name = J $data @('model','id') }
+$cost_usd   = J $data @('cost','total_cost_usd')
 $cwd        = J $data @('workspace','current_dir')
 if (-not $cwd) { $cwd = J $data @('cwd') }
 $session_id = J $data @('session_id')
@@ -73,6 +74,11 @@ if ($HANDOFF_ON -and $session_id -and (Test-Path $guard) -and ($null -ne $five_p
 
 # --- 剩餘 ctx / 5h ---
 $ctx_rem  = if ($null -ne $ctx_used) { [int][math]::Round(100 - [double]$ctx_used) } else { $null }
+
+# --- 本 session 的 API 花費 ---
+# notes: 這是 CC 自己回報的累計金額，訂閱制下也照算，不等於帳單上真的被收的錢。
+$cost_str = ''
+if ($null -ne $cost_usd) { $cost_str = '{0:F2}' -f [double]$cost_usd }
 
 # --- 專案名稱 ---
 $dir_display = if ($cwd) { Split-Path $cwd -Leaf } else { '' }
@@ -203,6 +209,7 @@ if ($cols -ge 80) {
     $c = Color-Rem $ctx_rem
     $L1 += "  ${DIM}ctx$RST $c$ctx_rem%$RST"
   }
+  if ($cost_str) { $L1 += "  $DIM$([char]0x24)$cost_str$RST" }
   if ($quota_block) { $L1 += "    $quota_block" }
   if ($HANDOFF_ON -and ($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) {
     $L1 += "  $RED$([char]0x26A0) 交給Codex$RST"
@@ -267,6 +274,7 @@ if ($cols -ge 80) {
 } else {
   $L = "$DIM$now$RST $CYAN$dir_display$RST"
   if ($null -ne $ctx_rem) { $L += " ${DIM}ctx$RST$(Color-Rem $ctx_rem)$ctx_rem%$RST" }
+  if ($cost_str) { $L += " $DIM$([char]0x24)$cost_str$RST" }
   if ($five_next) { $L += " $DIM$([char]0x2192)$five_next$RST" }
   if ($quota_block) { $L += " $quota_block" }
   if ($HANDOFF_ON -and ($null -ne $five_pct) -and ([int][double]$five_pct -ge 90)) { $L += " $RED!$RST" }
