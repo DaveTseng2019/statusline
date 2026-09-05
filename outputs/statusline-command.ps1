@@ -48,6 +48,24 @@ $session_id = J $data @('session_id')
 $HOMEDIR = $env:USERPROFILE
 $ccfg = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOMEDIR '.claude' }
 
+# --- 訂閱等級 ---
+# notes: payload 沒有這個欄位（2026-09-05 查過 CC 2.1.261 的官方 statusline 文件），
+#        只能從 .credentials.json 的 claudeAiOauth.subscriptionType 讀。
+# notes: 故意用 regex 掃原始文字，不 ConvertFrom-Json。那個檔裡有 access token 與
+#        refresh token，為了一個字串把整包解析進記憶體沒有好處。改這段時不要順手改成
+#        解析物件，也不要把 $Matches 以外的東西印出去。
+$plan = ''
+$cred = Join-Path $ccfg '.credentials.json'
+if (Test-Path $cred) {
+  try {
+    $ctext = [IO.File]::ReadAllText($cred)
+    if ($ctext -match '"subscriptionType"\s*:\s*"([^"]+)"') {
+      $p = $Matches[1]
+      $plan = $p.Substring(0,1).ToUpper() + $p.Substring(1)
+    }
+  } catch {}
+}
+
 # notes: 2026-08-23 停用自動交接。三次觸發都只剩 5~20 分鐘就重置，等重置比換 Codex 劃算。
 #        機制、guard 與 /tocodex 完整保留，要恢復把旗標改回 $true。
 $HANDOFF_ON = $false
@@ -216,6 +234,7 @@ if ($cols -ge 80) {
   if ($model_name) {
     $model_str = $model_name
     if ($effort) { $model_str += [string][char]0xB7 + $effort }
+    if ($plan) { $model_str = "$plan $model_str" }
     $L1 += "  $DIM[$model_str]$RST"
   }
   if ($null -ne $ctx_rem) {
