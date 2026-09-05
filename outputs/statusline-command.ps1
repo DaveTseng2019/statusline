@@ -76,9 +76,22 @@ if ($HANDOFF_ON -and $session_id -and (Test-Path $guard) -and ($null -ne $five_p
 $ctx_rem  = if ($null -ne $ctx_used) { [int][math]::Round(100 - [double]$ctx_used) } else { $null }
 
 # --- 本 session 的 API 花費 ---
-# notes: 這是 CC 自己回報的累計金額，訂閱制下也照算，不等於帳單上真的被收的錢。
+# notes: 訂閱額度涵蓋的模型走 5h/7d，那個金額不等於帳單上被收的錢，所以預設隱藏；
+#        只有要燒 credit 的模型（例如 Fable）才顯示。
+# notes: payload 沒有任何「這個模型怎麼計費」的欄位——2026-09-05 查過 CC 2.1.261 的官方
+#        statusline 文件，只有 rate_limits 的 five_hour / seven_day / spend_limit。所以只能
+#        靠 model.id 比對。條件寫成「不在訂閱清單裡就顯示」而不是「在 credit 清單裡才顯示」：
+#        出現沒見過的新模型時，寧可多顯示一個數字，也不要在真的花錢時漏掉。
+$SUBSCRIPTION_MODELS = @('opus', 'sonnet', 'haiku')
 $cost_str = ''
-if ($null -ne $cost_usd) { $cost_str = '{0:F2}' -f [double]$cost_usd }
+if ($null -ne $cost_usd) {
+  $model_id = [string](J $data @('model','id'))
+  $covered = $false
+  foreach ($m in $SUBSCRIPTION_MODELS) {
+    if ($model_id -like "*$m*") { $covered = $true }
+  }
+  if (-not $covered) { $cost_str = '{0:F2}' -f [double]$cost_usd }
+}
 
 # --- 專案名稱 ---
 $dir_display = if ($cwd) { Split-Path $cwd -Leaf } else { '' }
