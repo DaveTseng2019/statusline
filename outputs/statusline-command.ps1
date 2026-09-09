@@ -92,6 +92,32 @@ if ($HANDOFF_ON -and $session_id -and (Test-Path $guard) -and ($null -ne $five_p
 # --- 剩餘 ctx / 5h ---
 $ctx_rem  = if ($null -ne $ctx_used) { [int][math]::Round(100 - [double]$ctx_used) } else { $null }
 
+# --- 把 ctx 落地成檔，給 UserPromptSubmit hook 讀 ---
+# notes: 這份 payload 只餵給 statusline 腳本，模型自己讀不到 ctx，因此無法遵守
+#        CLAUDE.md Rule 6「不要靜默超支」。落地成檔後由 hook 在接近上限時注入。
+#        ctx 是 per-session 的（5h/7d 才是帳號共用），所以一定要寫 session_id，
+#        讀取端必須比對；多開 session 時不比對就會把別人的 ctx 當成自己的。
+# notes: 先寫 .tmp 再 Move -Force。statusline 重繪很頻繁，hook 可能讀到寫到一半的檔。
+#        撞上時 hook 只是靜默略過一次，但直接覆寫會讓它常態性讀到破 JSON。
+# notes: 值先算進變數再組 hashtable。PS 5.1 不接受在 hashtable 的 value 位置直接寫 if。
+if ($null -ne $ctx_rem) {
+  try {
+    $fp = if ($null -ne $five_pct) { [int][math]::Round([double]$five_pct) } else { $null }
+    $wp = if ($null -ne $week_pct) { [int][math]::Round([double]$week_pct) } else { $null }
+    $ctxFile = Join-Path $ccfg 'ctx-status.json'
+    $ctxTmp  = "$ctxFile.tmp"
+    $payload = [ordered]@{
+      session_id        = [string]$session_id
+      ctx_remaining_pct = $ctx_rem
+      five_hour_pct     = $fp
+      seven_day_pct     = $wp
+      updated_at        = (Get-Date).ToString('o')
+    }
+    [IO.File]::WriteAllText($ctxTmp, ($payload | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $ctxTmp -Destination $ctxFile -Force -ErrorAction Stop
+  } catch {}
+}
+
 # --- 本 session 的 API 花費 ---
 # notes: 訂閱額度涵蓋的模型走 5h/7d，那個金額不等於帳單上被收的錢，所以預設隱藏；
 #        只有要燒 credit 的模型（例如 Fable）才顯示。
